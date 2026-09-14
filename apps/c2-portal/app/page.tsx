@@ -33,7 +33,12 @@ export default function TacticalDashboard() {
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8443");
+    const wsBaseUrl =
+    process.env.NEXT_PUBLIC_WS_BASE_URL || "ws://localhost:8443";
+
+    const ws = new WebSocket(
+      `${wsBaseUrl}/v1/transceiver/channel`
+    );
     socketRef.current = ws;
 
     ws.onopen = () => {
