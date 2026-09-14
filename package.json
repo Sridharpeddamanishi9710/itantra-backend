@@ -1,0 +1,23 @@
+{
+  "name": "itantra-backend",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "npm@10.8.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+  "dev": "turbo dev",
+  "build": "turbo build",
+  "start": "turbo start",
+  "dev:c2": "npm run dev --workspace=c2-portal",
+  "dev:gateway": "npm run dev --workspace=stream-gateway",
+  "db:push": "node node_modules/prisma/build/index.js db push --schema=./packages/database/prisma/schema.prisma",
+  "db:generate": "node node_modules/prisma/build/index.js generate --schema=./packages/database/prisma/schema.prisma"
+},
+  "devDependencies": {
+    "prisma": "^5.13.0",
+    "turbo": "^2.0.0"
+  }
+}

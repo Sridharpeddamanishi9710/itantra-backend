@@ -1,0 +1,78 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum PriorityLevel {
+  PRIORITY_ROUTINE
+  PRIORITY_HIGH
+  PRIORITY_EMERGENCY_SOS
+}
+
+enum RadioTransportType {
+  WIFI_DIRECT
+  BLUETOOTH_LE
+  TACTICAL_GATEWAY
+  SATELLITE
+  TACTICAL_UPLINK
+}
+
+model Transceiver {
+  deviceId               String             @id @map("device_id") @db.VarChar(64)
+  callsign               String             @unique @db.VarChar(32)
+  operatorName           String?            @map("operator_name") @db.VarChar(64)
+  primaryTransport       RadioTransportType @map("primary_transport")
+  currentFirmwareVersion String             @default("v1.0.0") @map("current_firmware_version") @db.VarChar(16)
+  currentAiModelVersion  String             @default("v1.0.0") @map("current_ai_model_version") @db.VarChar(16)
+  registeredAt           DateTime           @default(now()) @map("registered_at") @db.Timestamptz
+  lastHeartbeat          DateTime?          @map("last_heartbeat") @db.Timestamptz
+  isActive               Boolean            @default(true) @map("is_active")
+  
+  transmissions          Transmission[]
+
+  @@map("tbl_transceivers")
+}
+
+model Transmission {
+  packetId              String             @id @default(uuid()) @map("packet_id") @db.Uuid
+  senderCallsign        String             @map("sender_callsign") @db.VarChar(32)
+  recipientCallsign     String             @map("recipient_callsign") @db.VarChar(32)
+  sourceLanguage        String             @map("source_language") @db.VarChar(8)
+  targetLanguage        String             @map("target_language") @db.VarChar(8)
+  compactTextPayload    String             @map("compact_text_payload") @db.Text
+  payloadByteSize       Int                @map("payload_byte_size")
+  priority              PriorityLevel      @default(PRIORITY_ROUTINE)
+  transportUsed         RadioTransportType @map("transport_used")
+  latitude              Float?
+  longitude             Float?
+  transmissionTimestamp DateTime           @default(now()) @map("transmission_timestamp") @db.Timestamptz
+  deliveredTimestamp    DateTime?          @map("delivered_timestamp") @db.Timestamptz
+  status                String             @default("RECEIVED") @db.VarChar(16)
+
+  transceiver           Transceiver        @relation(fields: [senderCallsign], references: [callsign])
+  incidents             EmergencyIncident[]
+
+  @@index([transmissionTimestamp(sort: Desc)])
+  @@index([priority])
+  @@map("tbl_transmissions")
+}
+
+model EmergencyIncident {
+  incidentId             String       @id @default(uuid()) @map("incident_id") @db.Uuid
+  packetId               String       @map("packet_id") @db.Uuid
+  initiatingCallsign     String       @map("initiating_callsign") @db.VarChar(32)
+  alertType              String       @default("CRITICAL_SOS_BROADCAST") @map("alert_type") @db.VarChar(64)
+  status                 String       @default("ACTIVE_DISPATCH") @db.VarChar(24)
+  firstResponderAssigned String?      @map("first_responder_assigned") @db.VarChar(64)
+  createdAt              DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  resolvedAt             DateTime?    @map("resolved_at") @db.Timestamptz
+
+  transmission           Transmission @relation(fields: [packetId], references: [packetId])
+
+  @@index([status])
+  @@map("tbl_emergency_incidents")
+}
