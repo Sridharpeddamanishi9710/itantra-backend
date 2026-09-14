@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@itantra/database";
 import { z } from "zod";
-import { validateTacticalAuth } from "@/lib/auth";
+import { validateTacticalAuth } from "../../../../lib/auth";
 
 const SosPayloadSchema = z.object({
   senderCallsign: z.string().min(1).max(32),

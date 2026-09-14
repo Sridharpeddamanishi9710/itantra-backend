@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@itantra/database";
 import { z } from "zod";
-import { issueTacticalToken } from "@/lib/auth";
+import { issueTacticalToken } from "../../../../../lib/auth";
 
 const TokenRequestSchema = z.object({
   callsign: z.string().min(1).max(32),
