@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useRef } from "react";
 import dynamic from "next/dynamic";
-import { MapMarkerData } from "@/components/TacticalMap";
+import { MapMarkerData } from "../components/TacticalMap";
 
 // Disable SSR for Leaflet map component
-const TacticalMap = dynamic(() => import("@/components/TacticalMap"), {
+const TacticalMap = dynamic(() => import("../components/TacticalMap"), {
   ssr: false,
   loading: () => (
     <div className="w-full h-[400px] rounded-lg border border-slate-800 bg-slate-900/50 flex items-center justify-center font-mono text-xs text-slate-500">
