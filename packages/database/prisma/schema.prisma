@@ -25,6 +25,9 @@ model Transceiver {
   deviceId               String             @id @map("device_id") @db.VarChar(64)
   callsign               String             @unique @db.VarChar(32)
   operatorName           String?            @map("operator_name") @db.VarChar(64)
+  publicKeyPem           String?            @map("public_key_pem") @db.Text
+  authChallenge          String?            @map("auth_challenge") @db.VarChar(128)
+  challengeExpiresAt     DateTime?          @map("challenge_expires_at") @db.Timestamptz
   primaryTransport       RadioTransportType @map("primary_transport")
   currentFirmwareVersion String             @default("v1.0.0") @map("current_firmware_version") @db.VarChar(16)
   currentAiModelVersion  String             @default("v1.0.0") @map("current_ai_model_version") @db.VarChar(16)
@@ -51,7 +54,7 @@ model Transmission {
   longitude             Float?
   transmissionTimestamp DateTime           @default(now()) @map("transmission_timestamp") @db.Timestamptz
   deliveredTimestamp    DateTime?          @map("delivered_timestamp") @db.Timestamptz
-  status                String             @default("RECEIVED") @db.VarChar(16)
+  status                String             @default("RECEIVED") @db.VarChar(32)
 
   transceiver           Transceiver        @relation(fields: [senderCallsign], references: [callsign])
   incidents             EmergencyIncident[]
@@ -75,4 +78,18 @@ model EmergencyIncident {
 
   @@index([status])
   @@map("tbl_emergency_incidents")
+}
+
+model TelemetryLog {
+  id             Int      @id @default(autoincrement())
+  deviceId       String   @map("device_id") @db.VarChar(64)
+  battery        Float?   @map("battery") @db.DoublePrecision
+  rssi           Float?   @map("rssi") @db.DoublePrecision
+  temperature    Float?   @map("temperature") @db.DoublePrecision
+  latency        Int?     @map("latency") @db.Integer
+  bufferOverruns Int      @default(0) @map("buffer_overruns") @db.Integer
+  capturedAt     DateTime @default(now()) @map("captured_at") @db.Timestamptz
+
+  @@index([deviceId, capturedAt(sort: Desc)])
+  @@map("tbl_telemetry_logs")
 }
