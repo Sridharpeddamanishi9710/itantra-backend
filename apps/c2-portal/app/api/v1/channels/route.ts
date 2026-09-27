@@ -1,60 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// Standard iTantra Tactical Operational Channels
-const TACTICAL_CHANNELS = [
-  {
-    channelId: "chan-emergency-01",
-    name: "EMERGENCY_BROADCAST",
-    description: "High-priority emergency distress and override channel",
-    frequencyMhz: 433.175,
-    isEncrypted: false,
-    activeSubscribers: 12,
-  },
-  {
-    channelId: "chan-cmd-net-02",
-    name: "COMMAND_NET",
-    description: "Squad lead and command telemetry channel",
-    frequencyMhz: 434.250,
-    isEncrypted: true,
-    activeSubscribers: 6,
-  },
-  {
-    channelId: "chan-sector4-03",
-    name: "SECTOR_4_TAC",
-    description: "Local ground patrol and sector 4 coordination",
-    frequencyMhz: 868.100,
-    isEncrypted: true,
-    activeSubscribers: 4,
-  },
-];
+import { prisma } from "@itantra/database";
+import { resolveChannelCallsign } from "../../../../lib/channel-auth";
 
 // GET /api/v1/channels -> List operational channels
 export async function GET() {
-  return NextResponse.json(
-    {
-      success: true,
-      totalChannels: TACTICAL_CHANNELS.length,
-      channels: TACTICAL_CHANNELS,
-      timestamp: new Date().toISOString(),
-    },
-    { status: 200 }
-  );
+  try {
+    const channels = await prisma.tacticalChannel.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      include: {
+        members: {
+          where: { isActive: true },
+          select: { id: true },
+        },
+      },
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        totalChannels: channels.length,
+        channels: channels.map(({ members, ...channel }) => ({
+          ...channel,
+          activeSubscribers: members.length,
+        })),
+        timestamp: new Date().toISOString(),
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Channel listing error:", error);
+    return NextResponse.json(
+      { success: false, error: "INTERNAL_SERVER_ERROR" },
+      { status: 500 }
+    );
+  }
 }
 
 // POST /api/v1/channels -> Join / Register a transceiver to a channel
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { callsign, channelId } = body;
+    const bodyCallsign = typeof body.callsign === "string" ? body.callsign.trim() : "";
+    const channelId = typeof body.channelId === "string" ? body.channelId.trim() : "";
 
-    if (!callsign || !channelId) {
+    if (!bodyCallsign || bodyCallsign.length > 32 || !channelId || channelId.length > 64) {
       return NextResponse.json(
         { success: false, error: "MISSING_CALLSIGN_OR_CHANNEL_ID" },
         { status: 400 }
       );
     }
 
-    const matchedChannel = TACTICAL_CHANNELS.find((c) => c.channelId === channelId);
+    const auth = resolveChannelCallsign(req, bodyCallsign);
+    if (auth.errorResponse) return auth.errorResponse;
+    const callsign = auth.callsign;
+
+    const matchedChannel = await prisma.tacticalChannel.findUnique({
+      where: { channelId },
+    });
 
     if (!matchedChannel) {
       return NextResponse.json(
@@ -62,6 +65,21 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    if (!matchedChannel.isActive) {
+      return NextResponse.json(
+        { success: false, error: "CHANNEL_INACTIVE" },
+        { status: 409 }
+      );
+    }
+
+    const membership = await prisma.channelMember.upsert({
+      where: {
+        channelId_callsign: { channelId, callsign },
+      },
+      update: { isActive: true },
+      create: { channelId, callsign },
+    });
 
     // Broadcast member joined notification to Gateway
     try {
@@ -76,7 +94,7 @@ export async function POST(req: NextRequest) {
               callsign,
               channelId,
               channelName: matchedChannel.name,
-              joinedAt: new Date().toISOString(),
+              joinedAt: membership.joinedAt.toISOString(),
             },
           })
         );
@@ -96,6 +114,13 @@ export async function POST(req: NextRequest) {
           channelName: matchedChannel.name,
           frequencyMhz: matchedChannel.frequencyMhz,
           isEncrypted: matchedChannel.isEncrypted,
+        },
+        membership: {
+          id: membership.id,
+          callsign: membership.callsign,
+          channelId: membership.channelId,
+          joinedAt: membership.joinedAt,
+          isActive: membership.isActive,
         },
       },
       { status: 200 }

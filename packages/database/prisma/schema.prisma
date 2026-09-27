@@ -1,10 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
+model Transceiver {
+  deviceId               String             @id @map("device_id") @db.VarChar(64)
+  callsign               String             @unique @db.VarChar(32)
+  operatorName           String?            @map("operator_name") @db.VarChar(64)
+  primaryTransport       RadioTransportType @map("primary_transport")
+  currentFirmwareVersion String             @default("v1.0.0") @map("current_firmware_version") @db.VarChar(16)
+  currentAiModelVersion  String             @default("v1.0.0") @map("current_ai_model_version") @db.VarChar(16)
+  registeredAt           DateTime           @default(now()) @map("registered_at") @db.Timestamptz(6)
+  lastHeartbeat          DateTime?          @map("last_heartbeat") @db.Timestamptz(6)
+  isActive               Boolean            @default(true) @map("is_active")
+  authChallenge          String?            @map("auth_challenge") @db.VarChar(128)
+  challengeExpiresAt     DateTime?          @map("challenge_expires_at") @db.Timestamptz(6)
+  publicKeyPem           String?            @map("public_key_pem")
+  transmissions          Transmission[]
+
+  @@map("tbl_transceivers")
+}
+
+model Transmission {
+  packetId              String              @id @default(uuid()) @map("packet_id") @db.Uuid
+  senderCallsign        String              @map("sender_callsign") @db.VarChar(32)
+  recipientCallsign     String              @map("recipient_callsign") @db.VarChar(32)
+  sourceLanguage        String              @map("source_language") @db.VarChar(8)
+  targetLanguage        String              @map("target_language") @db.VarChar(8)
+  compactTextPayload    String              @map("compact_text_payload")
+  payloadByteSize       Int                 @map("payload_byte_size")
+  priority              PriorityLevel       @default(PRIORITY_ROUTINE)
+  transportUsed         RadioTransportType  @map("transport_used")
+  latitude              Float?
+  longitude             Float?
+  transmissionTimestamp DateTime            @default(now()) @map("transmission_timestamp") @db.Timestamptz(6)
+  deliveredTimestamp    DateTime?           @map("delivered_timestamp") @db.Timestamptz(6)
+  status                String              @default("RECEIVED") @db.VarChar(32)
+  incidents             EmergencyIncident[]
+  transceiver           Transceiver         @relation(fields: [senderCallsign], references: [callsign])
+
+  @@index([transmissionTimestamp(sort: Desc)])
+  @@index([priority])
+  @@map("tbl_transmissions")
+}
+
+model EmergencyIncident {
+  incidentId             String       @id @default(uuid()) @map("incident_id") @db.Uuid
+  packetId               String       @map("packet_id") @db.Uuid
+  initiatingCallsign     String       @map("initiating_callsign") @db.VarChar(32)
+  alertType              String       @default("CRITICAL_SOS_BROADCAST") @map("alert_type") @db.VarChar(64)
+  status                 String       @default("ACTIVE_DISPATCH") @db.VarChar(24)
+  firstResponderAssigned String?      @map("first_responder_assigned") @db.VarChar(64)
+  createdAt              DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt             DateTime?    @map("resolved_at") @db.Timestamptz(6)
+  transmission           Transmission @relation(fields: [packetId], references: [packetId])
+
+  @@index([status])
+  @@map("tbl_emergency_incidents")
+}
+
+model TelemetryLog {
+  id             Int      @id @default(autoincrement())
+  deviceId       String   @map("device_id") @db.VarChar(64)
+  battery        Float?   @map("battery")
+  rssi           Float?   @map("rssi")
+  temperature    Float?   @map("temperature")
+  latency        Int?     @map("latency")
+  bufferOverruns Int      @default(0) @map("buffer_overruns")
+  capturedAt     DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  @@index([deviceId, capturedAt(sort: Desc)])
+  @@map("tbl_telemetry_logs")
+}
+
+model TacticalChannel {
+  channelId    String   @id @map("channel_id") @db.VarChar(64)
+  name         String   @unique @db.VarChar(64)
+  description  String?  @db.Text
+  frequencyMhz Float?   @map("frequency_mhz")
+  isEncrypted  Boolean  @default(true) @map("is_encrypted")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  members ChannelMember[]
+
+  @@map("tbl_tactical_channels")
+}
+
+model ChannelMember {
+  id        Int      @id @default(autoincrement())
+  channelId String   @map("channel_id") @db.VarChar(64)
+  callsign  String   @map("callsign") @db.VarChar(32)
+  joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+  isActive  Boolean  @default(true) @map("is_active")
+
+  channel TacticalChannel @relation(fields: [channelId], references: [channelId], onDelete: Cascade)
+
+  @@unique([channelId, callsign])
+  @@index([callsign])
+  @@map("tbl_channel_members")
 }
 
 enum PriorityLevel {
@@ -19,77 +118,4 @@ enum RadioTransportType {
   TACTICAL_GATEWAY
   SATELLITE
   TACTICAL_UPLINK
-}
-
-model Transceiver {
-  deviceId               String             @id @map("device_id") @db.VarChar(64)
-  callsign               String             @unique @db.VarChar(32)
-  operatorName           String?            @map("operator_name") @db.VarChar(64)
-  publicKeyPem           String?            @map("public_key_pem") @db.Text
-  authChallenge          String?            @map("auth_challenge") @db.VarChar(128)
-  challengeExpiresAt     DateTime?          @map("challenge_expires_at") @db.Timestamptz
-  primaryTransport       RadioTransportType @map("primary_transport")
-  currentFirmwareVersion String             @default("v1.0.0") @map("current_firmware_version") @db.VarChar(16)
-  currentAiModelVersion  String             @default("v1.0.0") @map("current_ai_model_version") @db.VarChar(16)
-  registeredAt           DateTime           @default(now()) @map("registered_at") @db.Timestamptz
-  lastHeartbeat          DateTime?          @map("last_heartbeat") @db.Timestamptz
-  isActive               Boolean            @default(true) @map("is_active")
-  
-  transmissions          Transmission[]
-
-  @@map("tbl_transceivers")
-}
-
-model Transmission {
-  packetId              String             @id @default(uuid()) @map("packet_id") @db.Uuid
-  senderCallsign        String             @map("sender_callsign") @db.VarChar(32)
-  recipientCallsign     String             @map("recipient_callsign") @db.VarChar(32)
-  sourceLanguage        String             @map("source_language") @db.VarChar(8)
-  targetLanguage        String             @map("target_language") @db.VarChar(8)
-  compactTextPayload    String             @map("compact_text_payload") @db.Text
-  payloadByteSize       Int                @map("payload_byte_size")
-  priority              PriorityLevel      @default(PRIORITY_ROUTINE)
-  transportUsed         RadioTransportType @map("transport_used")
-  latitude              Float?
-  longitude             Float?
-  transmissionTimestamp DateTime           @default(now()) @map("transmission_timestamp") @db.Timestamptz
-  deliveredTimestamp    DateTime?          @map("delivered_timestamp") @db.Timestamptz
-  status                String             @default("RECEIVED") @db.VarChar(32)
-
-  transceiver           Transceiver        @relation(fields: [senderCallsign], references: [callsign])
-  incidents             EmergencyIncident[]
-
-  @@index([transmissionTimestamp(sort: Desc)])
-  @@index([priority])
-  @@map("tbl_transmissions")
-}
-
-model EmergencyIncident {
-  incidentId             String       @id @default(uuid()) @map("incident_id") @db.Uuid
-  packetId               String       @map("packet_id") @db.Uuid
-  initiatingCallsign     String       @map("initiating_callsign") @db.VarChar(32)
-  alertType              String       @default("CRITICAL_SOS_BROADCAST") @map("alert_type") @db.VarChar(64)
-  status                 String       @default("ACTIVE_DISPATCH") @db.VarChar(24)
-  firstResponderAssigned String?      @map("first_responder_assigned") @db.VarChar(64)
-  createdAt              DateTime     @default(now()) @map("created_at") @db.Timestamptz
-  resolvedAt             DateTime?    @map("resolved_at") @db.Timestamptz
-
-  transmission           Transmission @relation(fields: [packetId], references: [packetId])
-
-  @@index([status])
-  @@map("tbl_emergency_incidents")
-}
-
-model TelemetryLog {
-  id             Int      @id @default(autoincrement())
-  deviceId       String   @map("device_id") @db.VarChar(64)
-  battery        Float?   @map("battery") @db.DoublePrecision
-  rssi           Float?   @map("rssi") @db.DoublePrecision
-  temperature    Float?   @map("temperature") @db.DoublePrecision
-  latency        Int?     @map("latency") @db.Integer
-  bufferOverruns Int      @default(0) @map("buffer_overruns") @db.Integer
-  capturedAt     DateTime @default(now()) @map("captured_at") @db.Timestamptz
-
-  @@index([deviceId, capturedAt(sort: Desc)])
-  @@map("tbl_telemetry_logs")
 }

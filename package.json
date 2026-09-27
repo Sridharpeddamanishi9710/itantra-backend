@@ -14,7 +14,11 @@
     "dev:c2": "npm run dev --workspace=c2-portal",
     "dev:gateway": "npm run dev --workspace=stream-gateway",
     "db:push": "node node_modules/prisma/build/index.js db push --schema=./packages/database/prisma/schema.prisma",
-    "db:generate": "node node_modules/prisma/build/index.js generate --schema=./packages/database/prisma/schema.prisma"
+    "db:generate": "node node_modules/prisma/build/index.js generate --schema=./packages/database/prisma/schema.prisma",
+    "db:seed": "node node_modules/prisma/build/index.js db seed --schema=./packages/database/prisma/schema.prisma"
+  },
+  "prisma": {
+    "seed": "node packages/database/prisma/seed.js"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",

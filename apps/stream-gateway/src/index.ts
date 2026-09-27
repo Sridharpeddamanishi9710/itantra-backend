@@ -506,28 +506,124 @@ wss.on("connection", (ws: WebSocket, req) => {
         // ========================================================
 
         case "SUBSCRIBE": {
-          const channel = normalizeChannel(
-            data.channelId ||
-              data.channel
-          );
+          const requestedChannel =
+            typeof data.channelId === "string"
+              ? data.channelId.trim()
+              : typeof data.channel === "string"
+                ? data.channel.trim()
+                : "";
 
-          client.subscriptions.add(
-            channel
-          );
+          if (!requestedChannel) {
+            ws.send(
+              JSON.stringify({
+                event: "ACK",
+                action: "SUBSCRIBE",
+                status: "REJECTED",
+                reason: "A channelId or channel is required",
+                timestamp: new Date().toISOString(),
+              })
+            );
+            break;
+          }
 
-          ws.send(
-            JSON.stringify({
-              event: "ACK",
-              action: "SUBSCRIBE",
-              status: "OK",
-              channelId: channel,
-              channels: Array.from(
-                client.subscriptions
-              ),
-              timestamp:
-                new Date().toISOString(),
-            })
-          );
+          const normalizedRequest = normalizeChannel(requestedChannel);
+          if (normalizedRequest === "TELEMETRY") {
+            client.subscriptions.add(normalizedRequest);
+            ws.send(
+              JSON.stringify({
+                event: "ACK",
+                action: "SUBSCRIBE",
+                status: "OK",
+                channelId: normalizedRequest,
+                channels: Array.from(client.subscriptions),
+                timestamp: new Date().toISOString(),
+              })
+            );
+            break;
+          }
+
+          try {
+            const channelRecord = await prisma.tacticalChannel.findFirst({
+              where: {
+                isActive: true,
+                OR: [
+                  { channelId: requestedChannel },
+                  { name: normalizedRequest },
+                ],
+              },
+              select: { channelId: true, name: true },
+            });
+
+            if (!channelRecord) {
+              ws.send(
+                JSON.stringify({
+                  event: "ACK",
+                  action: "SUBSCRIBE",
+                  status: "REJECTED",
+                  reason: "Channel does not exist or is inactive",
+                  channelId: requestedChannel,
+                  timestamp: new Date().toISOString(),
+                })
+              );
+              break;
+            }
+
+            const membership = client.callsign
+              ? await prisma.channelMember.findUnique({
+                  where: {
+                    channelId_callsign: {
+                      channelId: channelRecord.channelId,
+                      callsign: client.callsign,
+                    },
+                  },
+                  select: { isActive: true },
+                })
+              : null;
+
+            if (!membership?.isActive) {
+              ws.send(
+                JSON.stringify({
+                  event: "ACK",
+                  action: "SUBSCRIBE",
+                  status: "REJECTED",
+                  reason: "Active channel membership is required",
+                  channelId: channelRecord.channelId,
+                  timestamp: new Date().toISOString(),
+                })
+              );
+              break;
+            }
+
+            const channel = normalizeChannel(channelRecord.name);
+            client.subscriptions.add(channel);
+            client.subscriptions.add(
+              normalizeChannel(channelRecord.channelId)
+            );
+
+            ws.send(
+              JSON.stringify({
+                event: "ACK",
+                action: "SUBSCRIBE",
+                status: "OK",
+                channelId: channelRecord.channelId,
+                channel: channelRecord.name,
+                channels: Array.from(client.subscriptions),
+                timestamp: new Date().toISOString(),
+              })
+            );
+          } catch (error) {
+            console.error("[STREAM-GW] Channel subscription check failed:", error);
+            ws.send(
+              JSON.stringify({
+                event: "ACK",
+                action: "SUBSCRIBE",
+                status: "REJECTED",
+                reason: "Channel membership could not be verified",
+                channelId: requestedChannel,
+                timestamp: new Date().toISOString(),
+              })
+            );
+          }
 
           break;
         }
