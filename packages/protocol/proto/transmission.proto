@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package itantra.transmission.v1;
+
+enum TransmissionPriority {
+  PRIORITY_UNSPECIFIED = 0;
+  PRIORITY_ROUTINE = 1;
+  PRIORITY_HIGH = 2;
+  PRIORITY_EMERGENCY_SOS = 3;
+  PRIORITY_URGENT = 4;
+}
+
+enum RadioTransportType {
+  RADIO_TRANSPORT_UNSPECIFIED = 0;
+  WIFI_DIRECT = 1;
+  BLUETOOTH_LE = 2;
+  TACTICAL_GATEWAY = 3;
+  SATELLITE = 4;
+  TACTICAL_UPLINK = 5;
+}
+
+message GeoLocation {
+  double latitude = 1;
+  double longitude = 2;
+}
+
+// Field numbers are part of the wire contract and must not be changed.
+message TransmissionPacket {
+  string packet_id = 1;
+  string sender_callsign = 2;
+  string recipient_callsign = 3;
+  string channel_id = 4;
+  string source_language = 5;
+  string target_language = 6;
+  string compact_text_payload = 7;
+  TransmissionPriority priority = 8;
+  RadioTransportType transport_used = 9;
+  GeoLocation location = 10;
+  uint64 timestamp_unix_ms = 11;
+  bytes signature = 12;
+}
